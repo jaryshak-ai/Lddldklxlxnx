@@ -1,0 +1,1417 @@
+name: Build EclipsEnchant
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Generate project files
+        run: |
+          set -e
+          mkdir -p src/main/java/ru/eclips/enchant src/main/resources
+          cat > pom.xml << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <project xmlns="http://maven.apache.org/POM/4.0.0"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+              <modelVersion>4.0.0</modelVersion>
+
+              <groupId>ru.eclips</groupId>
+              <artifactId>EclipsEnchant</artifactId>
+              <version>1.0.0</version>
+              <packaging>jar</packaging>
+
+              <properties>
+                  <maven.compiler.source>17</maven.compiler.source>
+                  <maven.compiler.target>17</maven.compiler.target>
+                  <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+              </properties>
+
+              <repositories>
+                  <repository>
+                      <id>lanink</id>
+                      <url>https://repo.lanink.cn/repository/maven-public/</url>
+                  </repository>
+              </repositories>
+
+              <dependencies>
+                  <dependency>
+                      <groupId>cn.nukkit</groupId>
+                      <artifactId>Nukkit</artifactId>
+                      <version>MOT-SNAPSHOT</version>
+                      <scope>provided</scope>
+                  </dependency>
+              </dependencies>
+
+              <build>
+                  <finalName>EclipsEnchant-${project.version}</finalName>
+                  <plugins>
+                      <plugin>
+                          <groupId>org.apache.maven.plugins</groupId>
+                          <artifactId>maven-compiler-plugin</artifactId>
+                          <version>3.11.0</version>
+                          <configuration>
+                              <release>17</release>
+                              <encoding>UTF-8</encoding>
+                          </configuration>
+                      </plugin>
+                  </plugins>
+              </build>
+          </project>
+          EOF
+          cat > src/main/resources/plugin.yml << 'EOF'
+          name: EclipsEnchant
+          main: ru.eclips.enchant.EclipsEnchant
+          version: "1.0.0"
+          api: ["1.0.0"]
+          author: jaryshak
+          description: Зачарование за монеты TpCoins - меню на столе зачарований, команда /mag и кастомная чара Молот 3x3 для кирки
+          depend: [TpCoins]
+
+          commands:
+            mag:
+              description: Показать доступные чары и цены для предмета в руке
+              usage: /mag
+              permission: eclipsenchant.mag
+            magreload:
+              description: Перезагрузить config.yml плагина EclipsEnchant
+              usage: /magreload
+              permission: eclipsenchant.reload
+
+          permissions:
+            eclipsenchant.mag:
+              description: Команда /mag
+              default: "true"
+            eclipsenchant.reload:
+              description: Перезагрузка конфига
+              default: op
+          EOF
+          cat > src/main/resources/config.yml << 'EOF'
+          # EclipsEnchant - зачарование за монеты TpCoins.
+          # После правок выполни /magreload (или перезапусти сервер).
+          #
+          # prices - цена за ИТОГОВЫЙ уровень по порядку: первая цифра = уровень I, вторая = II и т.д.
+          #   Количество цифр = максимальный уровень чары. При повышении уровня игрок платит только разницу цен.
+          # targets - к чему применима чара:
+          #   all (любой зачаровываемый предмет), armor (вся броня), helmet, chestplate, leggings, boots,
+          #   sword, axe, pickaxe, shovel, hoe, bow, crossbow, trident, rod (удочка).
+          #   Булаву зачаровывать нельзя вообще.
+          # conflicts - ключи чар, которые нельзя ставить вместе с этой (как в ванили).
+          # id - номер чары в Bedrock (менять не нужно).
+
+          # Кастомная чара для кирки: при добыче ломает блоки слоем 3x3.
+          hammer:
+            enabled: true
+            # Название чары (показывается в меню и в описании кирки)
+            name: "Молот 3×3"
+            price: 50000
+            # true = в приседе (шифт) молот не срабатывает, можно копать точечно
+            sneak-disables: true
+
+          enchants:
+            # --- Любой предмет ---
+            - {key: unbreaking, name: "Прочность", id: 17, targets: [all], prices: [2000, 5000, 8000]}
+            - {key: mending, name: "Починка", id: 26, targets: [all], prices: [9000]}
+
+            # --- Броня ---
+            - {key: protection, name: "Защита", id: 0, targets: [armor], prices: [1100, 3000, 7000, 15000], conflicts: [fire_protection, blast_protection, projectile_protection]}
+            - {key: fire_protection, name: "Огнеупорность", id: 1, targets: [armor], prices: [600, 1500, 3500, 7000], conflicts: [protection, blast_protection, projectile_protection]}
+            - {key: blast_protection, name: "Взрывоустойчивость", id: 3, targets: [armor], prices: [800, 2000, 4000, 8000], conflicts: [protection, fire_protection, projectile_protection]}
+            - {key: projectile_protection, name: "Защита от снарядов", id: 4, targets: [armor], prices: [600, 1500, 3500, 7000], conflicts: [protection, fire_protection, blast_protection]}
+            - {key: thorns, name: "Шипы", id: 5, targets: [armor], prices: [800, 2300, 5300]}
+            - {key: respiration, name: "Подводное дыхание", id: 6, targets: [helmet], prices: [600, 1500, 3500]}
+            - {key: aqua_affinity, name: "Родство с водой", id: 8, targets: [helmet], prices: [2300]}
+            - {key: depth_strider, name: "Подводная ходьба", id: 7, targets: [boots], prices: [600, 1500, 3500]}
+            - {key: feather_falling, name: "Невесомость", id: 2, targets: [boots], prices: [600, 1500, 3500, 7000]}
+
+            # --- Мечи и топоры ---
+            - {key: sharpness, name: "Острота", id: 9, targets: [sword, axe], prices: [1100, 2600, 5300, 9000, 15000], conflicts: [smite]}
+            - {key: smite, name: "Небесная кара", id: 10, targets: [sword, axe], prices: [600, 1500, 3000, 5300, 9000], conflicts: [sharpness]}
+            - {key: knockback, name: "Отдача", id: 12, targets: [sword], prices: [1100, 3000]}
+            - {key: fire_aspect, name: "Заговор огня", id: 13, targets: [sword], prices: [2300, 6000]}
+            - {key: looting, name: "Добыча", id: 14, targets: [sword], prices: [2300, 6000, 12000]}
+
+            # --- Кирки, лопаты, мотыги, топоры ---
+            - {key: efficiency, name: "Эффективность", id: 15, targets: [pickaxe, axe, shovel, hoe], prices: [1100, 2600, 5300, 9000, 15000]}
+            - {key: silk_touch, name: "Шелковое касание", id: 16, targets: [pickaxe, axe, shovel, hoe], prices: [11000], conflicts: [fortune]}
+            - {key: fortune, name: "Удача", id: 18, targets: [pickaxe, axe, shovel, hoe], prices: [2300, 6000, 12000], conflicts: [silk_touch]}
+
+            # --- Лук ---
+            - {key: power, name: "Сила", id: 19, targets: [bow], prices: [1100, 2600, 5300, 9000, 15000]}
+            - {key: punch, name: "Тычок", id: 20, targets: [bow], prices: [1100, 3000]}
+            - {key: flame, name: "Горящая стрела", id: 21, targets: [bow], prices: [3800]}
+            - {key: infinity, name: "Бесконечность", id: 22, targets: [bow], prices: [15000]}
+
+            # --- Арбалет ---
+            - {key: multishot, name: "Многозарядность", id: 33, targets: [crossbow], prices: [9000], conflicts: [piercing]}
+            - {key: piercing, name: "Пронзающая стрела", id: 34, targets: [crossbow], prices: [600, 1500, 3500, 7000], conflicts: [multishot]}
+            - {key: quick_charge, name: "Быстрая перезарядка", id: 35, targets: [crossbow], prices: [2300, 5300, 10500]}
+
+            # --- Трезубец ---
+            - {key: loyalty, name: "Верность", id: 31, targets: [trident], prices: [2300, 5300, 10500], conflicts: [riptide]}
+            - {key: riptide, name: "Тягун", id: 30, targets: [trident], prices: [2300, 5300, 10500], conflicts: [loyalty, channeling]}
+            - {key: channeling, name: "Громовержец", id: 32, targets: [trident], prices: [7500], conflicts: [riptide]}
+            - {key: impaling, name: "Пронзатель", id: 29, targets: [trident], prices: [600, 1500, 3000, 5300, 9000]}
+
+            # --- Удочка ---
+            - {key: luck_of_the_sea, name: "Морская удача", id: 23, targets: [rod], prices: [2300, 5300, 10500]}
+            - {key: lure, name: "Приманка", id: 24, targets: [rod], prices: [1500, 3800, 7500]}
+          EOF
+          cat > src/main/java/ru/eclips/enchant/EclipsEnchant.java << 'EOF'
+          package ru.eclips.enchant;
+
+          import cn.nukkit.Player;
+          import cn.nukkit.block.Block;
+          import cn.nukkit.command.Command;
+          import cn.nukkit.command.CommandSender;
+          import cn.nukkit.event.EventHandler;
+          import cn.nukkit.event.EventPriority;
+          import cn.nukkit.event.Listener;
+          import cn.nukkit.event.block.BlockBreakEvent;
+          import cn.nukkit.event.inventory.InventoryOpenEvent;
+          import cn.nukkit.event.player.PlayerFormRespondedEvent;
+          import cn.nukkit.event.player.PlayerInteractEvent;
+          import cn.nukkit.event.player.PlayerQuitEvent;
+          import cn.nukkit.form.element.ElementButton;
+          import cn.nukkit.form.response.FormResponseModal;
+          import cn.nukkit.form.response.FormResponseSimple;
+          import cn.nukkit.form.window.FormWindowModal;
+          import cn.nukkit.form.window.FormWindowSimple;
+          import cn.nukkit.item.Item;
+          import cn.nukkit.item.ItemTool;
+          import cn.nukkit.item.enchantment.Enchantment;
+          import cn.nukkit.level.Level;
+          import cn.nukkit.math.BlockFace;
+          import cn.nukkit.math.Vector3;
+          import cn.nukkit.nbt.tag.CompoundTag;
+          import cn.nukkit.nbt.tag.ListTag;
+          import cn.nukkit.plugin.Plugin;
+          import cn.nukkit.plugin.PluginBase;
+          import cn.nukkit.scheduler.Task;
+          import cn.nukkit.utils.Config;
+
+          import java.io.File;
+          import java.lang.reflect.Method;
+          import java.util.ArrayList;
+          import java.util.Arrays;
+          import java.util.HashSet;
+          import java.util.List;
+          import java.util.Locale;
+          import java.util.Map;
+          import java.util.Random;
+          import java.util.Set;
+          import java.util.UUID;
+          import java.util.concurrent.ConcurrentHashMap;
+
+          /**
+           * EclipsEnchant: зачарование за монеты TpCoins.
+           * Клик по столу зачарований открывает форму с чарами для предмета в руке, /mag показывает список чар и цен,
+           * кастомная чара «Молот 3x3» для кирки ломает блоки слоем 3x3.
+           * Все данные хранятся в самих предметах (NBT и описание), поэтому переживают рестарт сервера.
+           */
+          public class EclipsEnchant extends PluginBase implements Listener {
+
+              private static final int F_MAIN = 0;
+              private static final int F_LEVEL = 1;
+              private static final int F_CONFIRM = 2;
+              private static final int F_INFO = 3;
+
+              private static final String HAMMER_TAG = "eclipsHammer";
+              private static final String NEED_ITEM = "§cВозьмите предмет в руку который хотите зачаровать";
+              private static final String[] ROMAN = {"0", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"};
+
+              // Запасная классификация предметов по числовым id (на случай, если методы isXxx() недоступны).
+              private static final Set<Integer> SWORDS = ids(268, 272, 267, 276, 283, 743);
+              private static final Set<Integer> PICKAXES = ids(270, 274, 257, 278, 285, 745);
+              private static final Set<Integer> AXES = ids(271, 275, 258, 279, 286, 746);
+              private static final Set<Integer> SHOVELS = ids(269, 273, 256, 277, 284, 744);
+              private static final Set<Integer> HOES = ids(290, 291, 292, 293, 294, 747);
+              private static final Set<Integer> HELMETS = ids(298, 302, 306, 310, 314, 748, 469);
+              private static final Set<Integer> CHESTPLATES = ids(299, 303, 307, 311, 315, 749);
+              private static final Set<Integer> LEGGINGS = ids(300, 304, 308, 312, 316, 750);
+              private static final Set<Integer> BOOTS = ids(301, 305, 309, 313, 317, 751);
+
+              // ------------------------------------------------------------------ модели
+
+              static final class Ench {
+                  String key;
+                  String name;
+                  int id;
+                  Set<String> targets = new HashSet<>();
+                  Set<String> conflicts = new HashSet<>();
+                  long[] prices = new long[0];
+
+                  int max() {
+                      return prices.length;
+                  }
+
+                  long price(int lvl) {
+                      if (lvl <= 0 || prices.length == 0) {
+                          return 0;
+                      }
+                      return prices[Math.min(lvl, prices.length) - 1];
+                  }
+              }
+
+              /** Пункт меню: обычная чара или кастомный Молот 3x3 (ench == null). */
+              static final class Opt {
+                  Ench ench;
+                  boolean hammer;
+              }
+
+              static final class Pending {
+                  int type;
+                  int formId;
+                  int slot;
+                  int itemId;
+                  List<Opt> opts;
+                  Opt opt;
+                  int cur;
+                  int level;
+              }
+
+              /** Экономика TpCoins через рефлексию: getEconomy() -> getBalance/deposit/withdraw. */
+              static final class Eco {
+                  final Object obj;
+                  final Method mBalance;
+                  final Method mDeposit;
+                  final Method mWithdraw;
+
+                  Eco(Plugin tp) throws Exception {
+                      obj = tp.getClass().getMethod("getEconomy").invoke(tp);
+                      Class<?> c = obj.getClass();
+                      mBalance = c.getMethod("getBalance", String.class);
+                      mDeposit = c.getMethod("deposit", String.class, Long.TYPE, String.class);
+                      mWithdraw = c.getMethod("withdraw", String.class, Long.TYPE, String.class);
+                  }
+
+                  long balance(String key) throws Exception {
+                      return ((Number) mBalance.invoke(obj, key)).longValue();
+                  }
+
+                  String deposit(String key, long amount, String reason) throws Exception {
+                      return String.valueOf(mDeposit.invoke(obj, key, amount, reason));
+                  }
+
+                  String withdraw(String key, long amount, String reason) throws Exception {
+                      return String.valueOf(mWithdraw.invoke(obj, key, amount, reason));
+                  }
+              }
+
+              // ------------------------------------------------------------------ состояние
+
+              private volatile List<Ench> enchants = new ArrayList<>();
+              private volatile boolean hammerEnabled = true;
+              private volatile String hammerName = "Молот 3×3";
+              private volatile long hammerPrice = 50000;
+              private volatile boolean sneakOff = true;
+
+              private final Map<UUID, Pending> forms = new ConcurrentHashMap<>();
+              private final Map<UUID, Long> clicks = new ConcurrentHashMap<>();
+              private final Set<UUID> breaking = ConcurrentHashMap.newKeySet();
+              private final Random rnd = new Random();
+              private Eco eco;
+
+              // ------------------------------------------------------------------ жизненный цикл
+
+              @Override
+              public void onEnable() {
+                  saveResource("config.yml");
+                  loadConfig();
+                  eco();
+                  getServer().getPluginManager().registerEvents(this, this);
+                  getLogger().info("EclipsEnchant: загружено чар: " + enchants.size() + ".");
+              }
+
+              @Override
+              public void onDisable() {
+                  forms.clear();
+                  clicks.clear();
+                  breaking.clear();
+              }
+
+              private static Set<Integer> ids(int... a) {
+                  Set<Integer> s = new HashSet<>();
+                  for (int i : a) {
+                      s.add(i);
+                  }
+                  return s;
+              }
+
+              private void later(int ticks, final Runnable r) {
+                  getServer().getScheduler().scheduleDelayedTask(new Task() {
+                      @Override
+                      public void onRun(int currentTick) {
+                          try {
+                              r.run();
+                          } catch (Throwable t) {
+                              getLogger().error("[ОШИБКА] отложенная задача: " + t, t);
+                          }
+                      }
+                  }, ticks);
+              }
+
+              /** Ошибки только в консоль сервера, игроку ничего не показывается. */
+              private void err(Player p, String where, Throwable t) {
+                  getLogger().error("[ОШИБКА] " + where + " (" + (p == null ? "-" : p.getName()) + "): " + t, t);
+              }
+
+              private Eco eco() {
+                  if (eco == null) {
+                      try {
+                          Plugin tp = getServer().getPluginManager().getPlugin("TpCoins");
+                          if (tp != null) {
+                              eco = new Eco(tp);
+                          }
+                      } catch (Throwable t) {
+                          getLogger().error("Не удалось подключиться к экономике TpCoins: " + t, t);
+                      }
+                  }
+                  return eco;
+              }
+
+              private static String key(Player p) {
+                  return p.getName().trim().toLowerCase(Locale.ROOT).replace(' ', '_');
+              }
+
+              private long balance(Player p) {
+                  try {
+                      Eco e = eco();
+                      return e == null ? 0 : e.balance(key(p));
+                  } catch (Throwable t) {
+                      err(p, "баланс", t);
+                      return 0;
+                  }
+              }
+
+              // ------------------------------------------------------------------ конфиг
+
+              private void loadConfig() {
+                  List<Ench> loaded = new ArrayList<>();
+                  try {
+                      Config cfg = new Config(new File(getDataFolder(), "config.yml"), Config.YAML);
+                      Map<?, ?> all = cfg.getAll();
+
+                      Object h = all.get("hammer");
+                      if (h instanceof Map) {
+                          Map<?, ?> hm = (Map<?, ?>) h;
+                          Object en = hm.get("enabled");
+                          hammerEnabled = !(en instanceof Boolean) || (Boolean) en;
+                          hammerName = str(hm.get("name"), "Молот 3×3");
+                          hammerPrice = Math.max(0, num(hm.get("price"), 50000));
+                          Object so = hm.get("sneak-disables");
+                          sneakOff = !(so instanceof Boolean) || (Boolean) so;
+                      }
+
+                      Object raw = all.get("enchants");
+                      if (raw instanceof List) {
+                          for (Object o : (List<?>) raw) {
+                              if (!(o instanceof Map)) {
+                                  continue;
+                              }
+                              Map<?, ?> m = (Map<?, ?>) o;
+                              Ench e = new Ench();
+                              e.key = str(m.get("key"), "").toLowerCase(Locale.ROOT);
+                              e.name = str(m.get("name"), e.key);
+                              e.id = (int) num(m.get("id"), -1);
+                              e.targets.addAll(strList(m.get("targets")));
+                              e.conflicts.addAll(strList(m.get("conflicts")));
+                              Object po = m.get("prices");
+                              if (po instanceof List) {
+                                  List<?> pl = (List<?>) po;
+                                  long[] arr = new long[pl.size()];
+                                  for (int i = 0; i < arr.length; i++) {
+                                      arr[i] = Math.max(0, num(pl.get(i), 0));
+                                  }
+                                  e.prices = arr;
+                              }
+                              if (e.key.isEmpty() || e.id < 0 || e.prices.length == 0 || e.targets.isEmpty()) {
+                                  getLogger().warning("config.yml: чара пропущена (нужны key, id, targets, prices): " + e.name);
+                                  continue;
+                              }
+                              loaded.add(e);
+                          }
+                      }
+                  } catch (Throwable t) {
+                      getLogger().error("Ошибка чтения config.yml: " + t, t);
+                  }
+                  enchants = loaded;
+              }
+
+              private static String str(Object o, String def) {
+                  return o == null ? def : String.valueOf(o);
+              }
+
+              private static long num(Object o, long def) {
+                  return o instanceof Number ? ((Number) o).longValue() : def;
+              }
+
+              private static List<String> strList(Object o) {
+                  List<String> r = new ArrayList<>();
+                  if (o instanceof List) {
+                      for (Object x : (List<?>) o) {
+                          if (x != null) {
+                              r.add(String.valueOf(x).trim().toLowerCase(Locale.ROOT));
+                          }
+                      }
+                  }
+                  return r;
+              }
+
+              // ------------------------------------------------------------------ предметы
+
+              private static boolean is(Item it, String method) {
+                  try {
+                      Object r = it.getClass().getMethod(method).invoke(it);
+                      return r instanceof Boolean && (Boolean) r;
+                  } catch (Throwable t) {
+                      return false;
+                  }
+              }
+
+              private static boolean knownId(int id) {
+                  return SWORDS.contains(id) || PICKAXES.contains(id) || AXES.contains(id) || SHOVELS.contains(id)
+                          || HOES.contains(id) || HELMETS.contains(id) || CHESTPLATES.contains(id)
+                          || LEGGINGS.contains(id) || BOOTS.contains(id)
+                          || id == 261 || id == 575 || id == 455 || id == 346 || id == 444 || id == 513;
+              }
+
+              /** Метки предмета: sword, axe, pickaxe, shovel, hoe, helmet, chestplate, leggings, boots, armor, bow, crossbow, trident, rod, misc. */
+              private static Set<String> tags(Item it) {
+                  Set<String> t = new HashSet<>();
+                  if (it == null || it.isNull()) {
+                      return t;
+                  }
+                  int id = it.getId();
+                  if (!knownId(id)) {
+                      // булаву зачаровывать нельзя вообще
+                      String nm = "";
+                      try {
+                          nm = String.valueOf(it.getName()).toLowerCase(Locale.ROOT);
+                      } catch (Throwable ignored) {
+                          // имя недоступно
+                      }
+                      if (nm.contains("mace") || nm.contains("булав")) {
+                          return t;
+                      }
+                  }
+                  if (SWORDS.contains(id) || is(it, "isSword")) {
+                      t.add("sword");
+                  }
+                  if (PICKAXES.contains(id) || is(it, "isPickaxe")) {
+                      t.add("pickaxe");
+                  }
+                  if (AXES.contains(id) || is(it, "isAxe")) {
+                      t.add("axe");
+                  }
+                  if (SHOVELS.contains(id) || is(it, "isShovel")) {
+                      t.add("shovel");
+                  }
+                  if (HOES.contains(id) || is(it, "isHoe")) {
+                      t.add("hoe");
+                  }
+                  if (HELMETS.contains(id) || is(it, "isHelmet")) {
+                      t.add("helmet");
+                  }
+                  if (CHESTPLATES.contains(id) || is(it, "isChestplate")) {
+                      t.add("chestplate");
+                  }
+                  if (LEGGINGS.contains(id) || is(it, "isLeggings")) {
+                      t.add("leggings");
+                  }
+                  if (BOOTS.contains(id) || is(it, "isBoots")) {
+                      t.add("boots");
+                  }
+                  if (t.contains("helmet") || t.contains("chestplate") || t.contains("leggings") || t.contains("boots")) {
+                      t.add("armor");
+                  }
+                  if (id == 261) {
+                      t.add("bow");
+                  }
+                  if (id == 575) {
+                      t.add("crossbow");
+                  }
+                  if (id == 455) {
+                      t.add("trident");
+                  }
+                  if (id == 346) {
+                      t.add("rod");
+                  }
+                  if (id == 444 || id == 513) {
+                      t.add("misc");
+                  }
+                  return t;
+              }
+
+              private static boolean applies(Ench e, Set<String> tags) {
+                  if (tags.isEmpty()) {
+                      return false;
+                  }
+                  if (e.targets.contains("all")) {
+                      return true;
+                  }
+                  for (String t : e.targets) {
+                      if (tags.contains(t)) {
+                          return true;
+                      }
+                  }
+                  return false;
+              }
+
+              /** Текущий уровень чары на предмете (читаем NBT напрямую). */
+              private static int level(Item it, int id) {
+                  try {
+                      if (it == null || !it.hasCompoundTag()) {
+                          return 0;
+                      }
+                      CompoundTag tag = it.getNamedTag();
+                      if (tag == null || !tag.contains("ench")) {
+                          return 0;
+                      }
+                      ListTag<CompoundTag> list = tag.getList("ench", CompoundTag.class);
+                      for (int i = 0; i < list.size(); i++) {
+                          CompoundTag c = list.get(i);
+                          if (c.getShort("id") == id) {
+                              return c.getShort("lvl");
+                          }
+                      }
+                  } catch (Throwable ignored) {
+                      // нет данных - значит чары нет
+                  }
+                  return 0;
+              }
+
+              private boolean conflictsWithItem(Item it, Ench e) {
+                  for (Ench o : enchants) {
+                      if (o == e) {
+                          continue;
+                      }
+                      if (level(it, o.id) > 0 && (e.conflicts.contains(o.key) || o.conflicts.contains(e.key))) {
+                          return true;
+                      }
+                  }
+                  return false;
+              }
+
+              private Item withEnchant(Item src, int id, int lvl) {
+                  Item it = src.clone();
+                  try {
+                      CompoundTag tag = it.hasCompoundTag() ? it.getNamedTag() : new CompoundTag();
+                      if (tag == null) {
+                          tag = new CompoundTag();
+                      }
+                      ListTag<CompoundTag> old = tag.contains("ench") ? tag.getList("ench", CompoundTag.class) : new ListTag<CompoundTag>("ench");
+                      ListTag<CompoundTag> nl = new ListTag<CompoundTag>("ench");
+                      for (int i = 0; i < old.size(); i++) {
+                          CompoundTag c = old.get(i);
+                          if (c.getShort("id") != id) {
+                              nl.add(c);
+                          }
+                      }
+                      nl.add(new CompoundTag().putShort("id", id).putShort("lvl", lvl));
+                      tag.putList(nl);
+                      it.setNamedTag(tag);
+                      return it;
+                  } catch (Throwable t) {
+                      // запасной вариант: штатный API
+                      Item it2 = src.clone();
+                      Enchantment en = Enchantment.getEnchantment(id);
+                      en.setLevel(lvl);
+                      it2.addEnchantment(en);
+                      return it2;
+                  }
+              }
+
+              private String hammerLine() {
+                  return "§r§dКастом чар: " + hammerName;
+              }
+
+              private boolean hasHammer(Item it) {
+                  try {
+                      if (it == null || it.isNull()) {
+                          return false;
+                      }
+                      if (it.hasCompoundTag()) {
+                          CompoundTag t = it.getNamedTag();
+                          if (t != null && t.contains(HAMMER_TAG)) {
+                              return true;
+                          }
+                      }
+                      String[] lore = it.getLore();
+                      if (lore != null) {
+                          String line = hammerLine();
+                          for (String s : lore) {
+                              if (line.equals(s)) {
+                                  return true;
+                              }
+                          }
+                      }
+                  } catch (Throwable ignored) {
+                      // считаем, что молота нет
+                  }
+                  return false;
+              }
+
+              private Item withHammer(Item src) {
+                  Item it = src.clone();
+                  CompoundTag tag = it.hasCompoundTag() ? it.getNamedTag() : new CompoundTag();
+                  if (tag == null) {
+                      tag = new CompoundTag();
+                  }
+                  tag.putByte(HAMMER_TAG, 1);
+                  it.setNamedTag(tag);
+                  try {
+                      String line = hammerLine();
+                      String[] old = it.getLore();
+                      List<String> l = new ArrayList<>();
+                      if (old != null) {
+                          l.addAll(Arrays.asList(old));
+                      }
+                      if (!l.contains(line)) {
+                          l.add(line);
+                      }
+                      it.setLore(l.toArray(new String[0]));
+                  } catch (Throwable ignored) {
+                      // описание - только украшение, метка в NBT уже стоит
+                  }
+                  return it;
+              }
+
+              private static Item hand(Player p) {
+                  try {
+                      Item it = p.getInventory().getItemInHand();
+                      if (it == null || it.isNull()) {
+                          return null;
+                      }
+                      return it;
+                  } catch (Throwable t) {
+                      return null;
+                  }
+              }
+
+              private static int slot(Player p) {
+                  try {
+                      return p.getInventory().getHeldItemIndex();
+                  } catch (Throwable t) {
+                      return -1;
+                  }
+              }
+
+              private static String itemName(Item it) {
+                  try {
+                      String n = it.getName();
+                      return n == null || n.isEmpty() ? "предмет" : n;
+                  } catch (Throwable t) {
+                      return "предмет";
+                  }
+              }
+
+              private static String roman(int n) {
+                  return n >= 0 && n < ROMAN.length ? ROMAN[n] : String.valueOf(n);
+              }
+
+              private List<Opt> options(Item hand, Set<String> tg) {
+                  List<Opt> res = new ArrayList<>();
+                  for (Ench e : enchants) {
+                      if (!applies(e, tg) || conflictsWithItem(hand, e)) {
+                          continue;
+                      }
+                      Opt o = new Opt();
+                      o.ench = e;
+                      res.add(o);
+                  }
+                  if (hammerEnabled && tg.contains("pickaxe")) {
+                      Opt o = new Opt();
+                      o.hammer = true;
+                      res.add(o);
+                  }
+                  return res;
+              }
+
+              private long payFor(Item hand, Opt o, int lvl) {
+                  if (o.hammer) {
+                      return hammerPrice;
+                  }
+                  long pay = o.ench.price(lvl) - o.ench.price(level(hand, o.ench.id));
+                  return Math.max(0, pay);
+              }
+
+              private boolean sameItem(Player p, Pending pf) {
+                  Item h = hand(p);
+                  return h != null && h.getId() == pf.itemId && slot(p) == pf.slot;
+              }
+
+              // ------------------------------------------------------------------ команды
+
+              @Override
+              public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+                  String n = command.getName();
+                  if (n.equalsIgnoreCase("mag")) {
+                      if (!(sender instanceof Player)) {
+                          sender.sendMessage("Эта команда только для игроков.");
+                          return true;
+                      }
+                      showInfo((Player) sender);
+                      return true;
+                  }
+                  if (n.equalsIgnoreCase("magreload")) {
+                      loadConfig();
+                      sender.sendMessage("§aКонфиг перезагружен. Чар загружено: " + enchants.size() + ".");
+                      return true;
+                  }
+                  return false;
+              }
+
+              // ------------------------------------------------------------------ события стола зачарований
+
+              private static boolean isTable(Block b) {
+                  try {
+                      if (b.getId() == 116) {
+                          return true;
+                      }
+                      String n = b.getName();
+                      return n != null && n.toLowerCase(Locale.ROOT).contains("enchant");
+                  } catch (Throwable t) {
+                      return false;
+                  }
+              }
+
+              @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+              public void onInteract(PlayerInteractEvent e) {
+                  try {
+                      if (e.getAction() != PlayerInteractEvent.Action.RIGHT_CLICK_BLOCK) {
+                          return;
+                      }
+                      Block b = e.getBlock();
+                      if (b == null || !isTable(b)) {
+                          return;
+                      }
+                      Player p = e.getPlayer();
+                      if (p.isSneaking()) {
+                          return; // в приседе можно ставить блоки на стол как обычно
+                      }
+                      e.setCancelled(true); // ванильное окно не открываем
+                      long now = System.currentTimeMillis();
+                      Long last = clicks.get(p.getUniqueId());
+                      if (last != null && now - last < 600) {
+                          return;
+                      }
+                      clicks.put(p.getUniqueId(), now);
+                      showMain(p);
+                  } catch (Throwable t) {
+                      getLogger().error("[ОШИБКА] onInteract: " + t, t);
+                  }
+              }
+
+              /** Подстраховка: ванильное окно стола зачарований не открывается ни при каких обстоятельствах. */
+              @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+              public void onInvOpen(InventoryOpenEvent e) {
+                  try {
+                      if (e.getInventory() != null && e.getInventory().getType() != null
+                              && e.getInventory().getType().name().toUpperCase(Locale.ROOT).contains("ENCHANT")) {
+                          e.setCancelled(true);
+                      }
+                  } catch (Throwable ignored) {
+                      // не удалось определить тип окна - ничего не делаем
+                  }
+              }
+
+              @EventHandler
+              public void onQuit(PlayerQuitEvent e) {
+                  UUID id = e.getPlayer().getUniqueId();
+                  forms.remove(id);
+                  clicks.remove(id);
+                  breaking.remove(id);
+              }
+
+              // ------------------------------------------------------------------ формы
+
+              private String buttonText(Item hand, Opt o) {
+                  if (o.hammer) {
+                      String l2 = hasHammer(hand) ? "Уже установлен" : "Ломает блоки 3×3 · " + hammerPrice + " мон.";
+                      return "§l§0" + hammerName + "§r\n§0" + l2;
+                  }
+                  Ench en = o.ench;
+                  int cur = level(hand, en.id);
+                  String l2;
+                  if (cur >= en.max()) {
+                      l2 = "Максимальный уровень: " + roman(cur);
+                  } else {
+                      long next = en.price(cur + 1) - en.price(cur);
+                      l2 = (cur > 0 ? "Сейчас " + roman(cur) + " · " : "") + "до " + roman(en.max()) + " · от " + next + " мон.";
+                  }
+                  return "§l§0" + en.name + "§r\n§0" + l2;
+              }
+
+              private void showMain(final Player p) {
+                  if (p == null || !p.isOnline()) {
+                      return;
+                  }
+                  try {
+                      Item hand = hand(p);
+                      if (hand == null) {
+                          p.sendMessage(NEED_ITEM);
+                          return;
+                      }
+                      Set<String> tg = tags(hand);
+                      if (tg.isEmpty()) {
+                          p.sendMessage("§cЭтот предмет нельзя зачаровать.");
+                          return;
+                      }
+                      List<Opt> opts = options(hand, tg);
+                      if (opts.isEmpty()) {
+                          p.sendMessage("§eДля этого предмета нет доступных чар.");
+                          return;
+                      }
+                      FormWindowSimple f = new FormWindowSimple("§l§0Зачарование",
+                              "§eБаланс: §f" + balance(p) + " монет\n§7Предмет: §f" + itemName(hand) + "\n§7Выбери чару:");
+                      for (Opt o : opts) {
+                          f.addButton(new ElementButton(buttonText(hand, o)));
+                      }
+                      Pending pf = new Pending();
+                      pf.type = F_MAIN;
+                      pf.opts = opts;
+                      pf.slot = slot(p);
+                      pf.itemId = hand.getId();
+                      pf.formId = p.showFormWindow(f);
+                      forms.put(p.getUniqueId(), pf);
+                  } catch (Throwable t) {
+                      err(p, "главное меню", t);
+                  }
+              }
+
+              private void showLevels(final Player p, Pending base, Opt o, int cur) {
+                  try {
+                      Item hand = hand(p);
+                      if (hand == null) {
+                          return;
+                      }
+                      Ench en = o.ench;
+                      FormWindowSimple f = new FormWindowSimple("§l§0" + en.name,
+                              "§eБаланс: §f" + balance(p) + " монет\n§7Сейчас: §f" + (cur > 0 ? roman(cur) : "нет")
+                                      + "\n§7Выбери уровень:");
+                      for (int l = cur + 1; l <= en.max(); l++) {
+                          long pay = Math.max(0, en.price(l) - en.price(cur));
+                          f.addButton(new ElementButton("§l§0" + en.name + " " + roman(l) + "§r\n§0К оплате: " + pay + " монет"));
+                      }
+                      f.addButton(new ElementButton("§l§0Назад"));
+                      Pending pf = new Pending();
+                      pf.type = F_LEVEL;
+                      pf.slot = base.slot;
+                      pf.itemId = base.itemId;
+                      pf.opt = o;
+                      pf.cur = cur;
+                      pf.formId = p.showFormWindow(f);
+                      forms.put(p.getUniqueId(), pf);
+                  } catch (Throwable t) {
+                      err(p, "выбор уровня", t);
+                  }
+              }
+
+              private void showConfirm(final Player p, Pending base, Opt o, int lvl) {
+                  try {
+                      Item hand = hand(p);
+                      if (hand == null) {
+                          return;
+                      }
+                      long pay = payFor(hand, o, lvl);
+                      String what = o.hammer ? hammerName : o.ench.name + " " + roman(lvl);
+                      FormWindowModal f = new FormWindowModal("§l§0Подтверждение",
+                              "§7Предмет: §f" + itemName(hand) + "\n§7Чара: §a" + what + "\n§7К оплате: §e" + pay
+                                      + " монет\n§7Баланс: §f" + balance(p) + " монет\n\n§fЗачаровать?",
+                              "§2§lЗачаровать", "§4§lНазад");
+                      Pending pf = new Pending();
+                      pf.type = F_CONFIRM;
+                      pf.slot = base.slot;
+                      pf.itemId = base.itemId;
+                      pf.opt = o;
+                      pf.level = lvl;
+                      pf.formId = p.showFormWindow(f);
+                      forms.put(p.getUniqueId(), pf);
+                  } catch (Throwable t) {
+                      err(p, "подтверждение", t);
+                  }
+              }
+
+              /** /mag: список чар и цен для предмета в руке. */
+              private void showInfo(final Player p) {
+                  try {
+                      Item hand = hand(p);
+                      if (hand == null) {
+                          p.sendMessage(NEED_ITEM);
+                          return;
+                      }
+                      Set<String> tg = tags(hand);
+                      if (tg.isEmpty()) {
+                          p.sendMessage("§cЭтот предмет нельзя зачаровать.");
+                          return;
+                      }
+                      StringBuilder sb = new StringBuilder();
+                      sb.append("§7Предмет: §f").append(itemName(hand)).append("\n");
+                      sb.append("§7Нажми «Зачаровать» ниже или кликни по столу зачарований. Цена указана за итоговый уровень, при повышении платишь разницу.\n\n");
+                      int count = 0;
+                      for (Ench e : enchants) {
+                          if (!applies(e, tg)) {
+                              continue;
+                          }
+                          count++;
+                          sb.append("§e").append(e.name).append("§f: ");
+                          for (int l = 1; l <= e.max(); l++) {
+                              if (l > 1) {
+                                  sb.append("§7 · ");
+                              }
+                              sb.append("§f").append(roman(l)).append(" §a").append(e.price(l));
+                          }
+                          sb.append("\n");
+                      }
+                      if (hammerEnabled && tg.contains("pickaxe")) {
+                          count++;
+                          sb.append("§d").append(hammerName).append("§f: §a").append(hammerPrice)
+                                  .append(" §7· ломает блоки слоем 3×3 (в приседе выключен)\n");
+                      }
+                      if (count == 0) {
+                          p.sendMessage("§eДля этого предмета нет доступных чар.");
+                          return;
+                      }
+                      FormWindowSimple f = new FormWindowSimple("§l§0Чары для предмета", sb.toString());
+                      f.addButton(new ElementButton("§l§0Зачаровать"));
+                      f.addButton(new ElementButton("§l§0Закрыть"));
+                      Pending pf = new Pending();
+                      pf.type = F_INFO;
+                      pf.formId = p.showFormWindow(f);
+                      forms.put(p.getUniqueId(), pf);
+                  } catch (Throwable t) {
+                      err(p, "/mag", t);
+                  }
+              }
+
+              @EventHandler
+              public void onForm(PlayerFormRespondedEvent e) {
+                  final Player p = e.getPlayer();
+                  Pending pf = forms.get(p.getUniqueId());
+                  if (pf == null || pf.formId != e.getFormID()) {
+                      return;
+                  }
+                  forms.remove(p.getUniqueId());
+                  try {
+                      if (pf.type == F_INFO) {
+                          if (!e.wasClosed() && e.getResponse() != null
+                                  && ((FormResponseSimple) e.getResponse()).getClickedButtonId() == 0) {
+                              reopen(p); // кнопка «Зачаровать» в /mag открывает то же меню покупки, что и стол
+                          }
+                          return;
+                      }
+                      if (e.wasClosed() || e.getResponse() == null) {
+                          if (pf.type == F_LEVEL || pf.type == F_CONFIRM) {
+                              later(2, new Runnable() {
+                                  @Override
+                                  public void run() {
+                                      showMain(p);
+                                  }
+                              });
+                          }
+                          return;
+                      }
+                      if (pf.type == F_MAIN) {
+                          int ci = ((FormResponseSimple) e.getResponse()).getClickedButtonId();
+                          if (pf.opts == null || ci < 0 || ci >= pf.opts.size()) {
+                              return;
+                          }
+                          if (!sameItem(p, pf)) {
+                              showMain(p);
+                              return;
+                          }
+                          Opt o = pf.opts.get(ci);
+                          Item hand = hand(p);
+                          if (o.hammer) {
+                              if (hasHammer(hand)) {
+                                  p.sendMessage("§eНа этой кирке уже стоит " + hammerName + ".");
+                                  reopen(p);
+                                  return;
+                              }
+                              showConfirm(p, pf, o, 0);
+                              return;
+                          }
+                          int cur = level(hand, o.ench.id);
+                          if (cur >= o.ench.max()) {
+                              p.sendMessage("§eЭта чара уже на максимальном уровне.");
+                              reopen(p);
+                              return;
+                          }
+                          if (o.ench.max() - cur == 1) {
+                              showConfirm(p, pf, o, o.ench.max());
+                          } else {
+                              showLevels(p, pf, o, cur);
+                          }
+                          return;
+                      }
+                      if (pf.type == F_LEVEL) {
+                          int ci = ((FormResponseSimple) e.getResponse()).getClickedButtonId();
+                          int count = pf.opt.ench.max() - pf.cur;
+                          if (ci < 0 || ci >= count) {
+                              reopen(p);
+                              return;
+                          }
+                          if (!sameItem(p, pf)) {
+                              showMain(p);
+                              return;
+                          }
+                          showConfirm(p, pf, pf.opt, pf.cur + 1 + ci);
+                          return;
+                      }
+                      if (pf.type == F_CONFIRM) {
+                          if (((FormResponseModal) e.getResponse()).getClickedButtonId() != 0) {
+                              reopen(p);
+                              return;
+                          }
+                          purchase(p, pf);
+                      }
+                  } catch (Throwable t) {
+                      err(p, "обработка формы", t);
+                  }
+              }
+
+              private void reopen(final Player p) {
+                  later(2, new Runnable() {
+                      @Override
+                      public void run() {
+                          showMain(p);
+                      }
+                  });
+              }
+
+              // ------------------------------------------------------------------ покупка
+
+              private void purchase(final Player p, Pending pf) {
+                  try {
+                      if (!p.isOnline()) {
+                          return;
+                      }
+                      if (!sameItem(p, pf)) {
+                          p.sendMessage("§cПредмет в руке изменился. Откройте меню заново.");
+                          return;
+                      }
+                      Item hand = hand(p);
+                      Opt o = pf.opt;
+                      String what;
+                      Item result;
+                      long pay;
+                      if (o.hammer) {
+                          if (!hammerEnabled || hasHammer(hand) || !tags(hand).contains("pickaxe")) {
+                              reopen(p);
+                              return;
+                          }
+                          what = hammerName;
+                          pay = hammerPrice;
+                          result = withHammer(hand);
+                      } else {
+                          Ench en = o.ench;
+                          int cur = level(hand, en.id);
+                          if (pf.level <= cur || pf.level > en.max()) {
+                              p.sendMessage("§eЭта чара уже на таком или более высоком уровне.");
+                              reopen(p);
+                              return;
+                          }
+                          if (!applies(en, tags(hand)) || conflictsWithItem(hand, en)) {
+                              p.sendMessage("§cЭта чара не подходит к предмету.");
+                              reopen(p);
+                              return;
+                          }
+                          what = en.name + " " + roman(pf.level);
+                          pay = Math.max(0, en.price(pf.level) - en.price(cur));
+                          result = withEnchant(hand, en.id, pf.level);
+                      }
+                      Eco ec = eco();
+                      if (ec == null) {
+                          getLogger().error("[ОШИБКА] экономика TpCoins недоступна, покупка отменена.");
+                          return;
+                      }
+                      String k = key(p);
+                      long bal = ec.balance(k);
+                      if (bal < pay) {
+                          p.sendMessage("§cНедостаточно монет. Нужно: " + pay + ", у тебя: " + bal + ".");
+                          reopen(p);
+                          return;
+                      }
+                      if (pay > 0) {
+                          String r = ec.withdraw(k, pay, "enchant " + what);
+                          if ("NOT_ENOUGH".equals(r)) {
+                              p.sendMessage("§cНедостаточно монет. Нужно: " + pay + ".");
+                              reopen(p);
+                              return;
+                          }
+                          if (!"OK".equals(r)) {
+                              getLogger().error("[ОШИБКА] оплата не прошла (" + p.getName() + "): " + r);
+                              return;
+                          }
+                      }
+                      try {
+                          p.getInventory().setItemInHand(result);
+                      } catch (Throwable t) {
+                          err(p, "выдача чары, возврат монет", t);
+                          if (pay > 0) {
+                              try {
+                                  ec.deposit(k, pay, "enchant refund");
+                              } catch (Throwable t2) {
+                                  err(p, "возврат монет", t2);
+                              }
+                          }
+                          return;
+                      }
+                      p.sendMessage("§aЗачаровано: §f" + what + " §aза §e" + pay + " монет.");
+                      reopen(p);
+                  } catch (Throwable t) {
+                      err(p, "покупка", t);
+                  }
+              }
+
+              // ------------------------------------------------------------------ Молот 3x3
+
+              @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+              public void onBreak(BlockBreakEvent e) {
+                  try {
+                      if (!hammerEnabled) {
+                          return;
+                      }
+                      final Player p = e.getPlayer();
+                      if (p == null || !p.isOnline() || breaking.contains(p.getUniqueId())) {
+                          return;
+                      }
+                      if (!p.isSurvival()) {
+                          return;
+                      }
+                      if (sneakOff && p.isSneaking()) {
+                          return;
+                      }
+                      Item tool = e.getItem();
+                      if (tool == null || !hasHammer(tool)) {
+                          return;
+                      }
+                      final Block origin = e.getBlock();
+                      if (origin == null || !isPickBlock(origin)) {
+                          return;
+                      }
+                      final int axis = axisOf(e, p);
+                      final Item toolCopy = tool.clone();
+                      later(1, new Runnable() {
+                          @Override
+                          public void run() {
+                              doHammer(p, origin, axis, toolCopy);
+                          }
+                      });
+                  } catch (Throwable t) {
+                      getLogger().error("[ОШИБКА] onBreak: " + t, t);
+                  }
+              }
+
+              private static boolean isPickBlock(Block b) {
+                  try {
+                      return b.getId() != 0 && b.getToolType() == ItemTool.TYPE_PICKAXE;
+                  } catch (Throwable t) {
+                      return false;
+                  }
+              }
+
+              /** 0 - плоскость YZ (бьёшь в восток/запад), 1 - плоскость XZ (вверх/вниз), 2 - плоскость XY (север/юг). */
+              private int axisOf(BlockBreakEvent e, Player p) {
+                  try {
+                      Object f = e.getClass().getMethod("getFace").invoke(e);
+                      if (f instanceof BlockFace) {
+                          String n = ((BlockFace) f).name();
+                          if (n.equals("UP") || n.equals("DOWN")) {
+                              return 1;
+                          }
+                          if (n.equals("NORTH") || n.equals("SOUTH")) {
+                              return 2;
+                          }
+                          if (n.equals("EAST") || n.equals("WEST")) {
+                              return 0;
+                          }
+                      }
+                  } catch (Throwable ignored) {
+                      // грань недоступна - определим по взгляду
+                  }
+                  double pitch = p.pitch;
+                  if (Math.abs(pitch) > 50) {
+                      return 1;
+                  }
+                  double yaw = ((p.yaw % 360) + 360) % 360;
+                  boolean z = (yaw < 45 || yaw >= 315) || (yaw >= 135 && yaw < 225);
+                  return z ? 2 : 0;
+              }
+
+              private boolean canHammer(Level lv, Block b, Item tool) {
+                  try {
+                      int id = b.getId();
+                      if (id == 0 || id == 7 || id == 52 || id == 120) {
+                          return false;
+                      }
+                      if (b.getToolType() != ItemTool.TYPE_PICKAXE || b.getHardness() < 0) {
+                          return false;
+                      }
+                      if (lv.getBlockEntity(b) != null) {
+                          return false; // сундуки, печки, спавнеры и прочее с содержимым не трогаем
+                      }
+                      Item[] drops = b.getDrops(tool);
+                      return drops != null && drops.length > 0; // блок, который кирка не добывает, не ломаем
+                  } catch (Throwable t) {
+                      return false;
+                  }
+              }
+
+              private void doHammer(Player p, Block origin, int axis, Item tool) {
+                  if (!p.isOnline()) {
+                      return;
+                  }
+                  Level lv = origin.getLevel();
+                  if (lv == null || p.getLevel() != lv) {
+                      return;
+                  }
+                  // главный блок должен действительно сломаться
+                  Block now = lv.getBlock(new Vector3(origin.getFloorX(), origin.getFloorY(), origin.getFloorZ()));
+                  if (now != null && now.getId() == origin.getId()) {
+                      return;
+                  }
+                  BlockFace face = BlockFace.UP;
+                  int broken = 0;
+                  breaking.add(p.getUniqueId());
+                  try {
+                      for (int a = -1; a <= 1; a++) {
+                          for (int c = -1; c <= 1; c++) {
+                              if (a == 0 && c == 0) {
+                                  continue;
+                              }
+                              int x = origin.getFloorX();
+                              int y = origin.getFloorY();
+                              int z = origin.getFloorZ();
+                              if (axis == 0) {
+                                  y += a;
+                                  z += c;
+                              } else if (axis == 1) {
+                                  x += a;
+                                  z += c;
+                              } else {
+                                  x += a;
+                                  y += c;
+                              }
+                              Vector3 pos = new Vector3(x, y, z);
+                              Block b = lv.getBlock(pos);
+                              if (b == null || !canHammer(lv, b, tool)) {
+                                  continue;
+                              }
+                              if (breakBlock(lv, pos, tool.clone(), p, face)) {
+                                  broken++;
+                              }
+                          }
+                      }
+                  } finally {
+                      breaking.remove(p.getUniqueId());
+                  }
+                  if (broken > 0) {
+                      damageHand(p, broken);
+                  }
+              }
+
+              /** Ломаем блок штатным методом уровня (с событием BlockBreakEvent, чтобы приваты работали). Сигнатуру подбираем рефлексией. */
+              private boolean breakBlock(Level lv, Vector3 pos, Item tool, Player p, BlockFace face) {
+                  for (Method m : lv.getClass().getMethods()) {
+                      if (!m.getName().equals("useBreakOn")) {
+                          continue;
+                      }
+                      Class<?>[] pt = m.getParameterTypes();
+                      boolean hasV = false;
+                      boolean hasI = false;
+                      boolean hasP = false;
+                      boolean ok = true;
+                      for (Class<?> c : pt) {
+                          if (c == Vector3.class) {
+                              hasV = true;
+                          } else if (c == Item.class) {
+                              hasI = true;
+                          } else if (c == Player.class) {
+                              hasP = true;
+                          } else if (c != BlockFace.class && c != boolean.class) {
+                              ok = false;
+                          }
+                      }
+                      if (!ok || !hasV || !hasI || !hasP) {
+                          continue;
+                      }
+                      Object[] args = new Object[pt.length];
+                      for (int i = 0; i < pt.length; i++) {
+                          if (pt[i] == Vector3.class) {
+                              args[i] = pos;
+                          } else if (pt[i] == Item.class) {
+                              args[i] = tool;
+                          } else if (pt[i] == Player.class) {
+                              args[i] = p;
+                          } else if (pt[i] == BlockFace.class) {
+                              args[i] = face;
+                          } else {
+                              args[i] = Boolean.TRUE;
+                          }
+                      }
+                      try {
+                          Object r = m.invoke(lv, args);
+                          return r != null;
+                      } catch (Throwable ignored) {
+                          // пробуем следующую сигнатуру
+                      }
+                  }
+                  return false;
+              }
+
+              /** Прочность кирки за доп. блоки: по 1 за блок, с учётом чары «Прочность» (шанс 1/(уровень+1)). */
+              private void damageHand(Player p, int blocks) {
+                  try {
+                      Item h = hand(p);
+                      if (h == null || !hasHammer(h)) {
+                          return;
+                      }
+                      int max = h.getMaxDurability();
+                      if (max <= 0) {
+                          return;
+                      }
+                      int unb = level(h, 17);
+                      int dmg = 0;
+                      for (int i = 0; i < blocks; i++) {
+                          if (unb <= 0 || rnd.nextInt(unb + 1) == 0) {
+                              dmg++;
+                          }
+                      }
+                      if (dmg <= 0) {
+                          return;
+                      }
+                      int nd = h.getDamage() + dmg;
+                      if (nd >= max) {
+                          p.getInventory().setItemInHand(Item.get(0));
+                      } else {
+                          Item c = h.clone();
+                          c.setDamage(nd);
+                          p.getInventory().setItemInHand(c);
+                      }
+                  } catch (Throwable t) {
+                      err(p, "прочность молота", t);
+                  }
+              }
+          }
+          EOF
+
+      - name: Build with Maven
+        run: mvn -B -ntp package
+
+      - name: Upload plugin jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: EclipsEnchant-plugin
+          path: target/EclipsEnchant-*.jar
+          if-no-files-found: error
